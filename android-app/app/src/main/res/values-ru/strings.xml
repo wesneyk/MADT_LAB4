@@ -1,0 +1,59 @@
+<resources>
+    <string name="app_name">Notes Storage</string>
+    <string name="screen_title_notes">Заметки</string>
+    <string name="screen_title_note_details">Детали заметки</string>
+    <string name="screen_title_new_note">Новая заметка</string>
+    <string name="screen_title_edit_note">Редактировать заметку</string>
+
+    <!-- Storage Switcher -->
+    <string name="storage_sqlite">SQLite (Основное)</string>
+    <string name="storage_json">JSON Файл (Вторичное)</string>
+
+    <!-- Buttons &amp; Actions -->
+    <string name="action_sync">Синхронизация SQLite → JSON</string>
+    <string name="action_add_note">Создать заметку</string>
+    <string name="action_save">Сохранить</string>
+    <string name="action_cancel">Отмена</string>
+    <string name="action_edit">Редактировать</string>
+    <string name="action_delete">Удалить</string>
+    <string name="action_confirm">Подтвердить</string>
+    <string name="action_back">Назад</string>
+
+    <!-- Fields &amp; Labels -->
+    <string name="label_title">Заголовок</string>
+    <string name="label_content">Содержимое</string>
+    <string name="label_created_at">Создано: %1$s</string>
+    <string name="label_updated_at">Обновлено: %1$s</string>
+
+    <!-- Empty States -->
+    <string name="empty_notes_title">Заметок пока нет</string>
+    <string name="empty_notes_subtitle">Нажмите кнопку +, чтобы добавить свою первую заметку.</string>
+
+    <!-- Validation Errors -->
+    <string name="error_empty_title">Заголовок не может быть пустым</string>
+    <string name="error_empty_content">Содержимое не может быть пустым</string>
+    <string name="error_empty_both">Заголовок и содержимое не могут быть пустыми</string>
+
+    <!-- Delete Confirmation Dialog -->
+    <string name="dialog_delete_title">Удалить заметку?</string>
+    <string name="dialog_delete_message">Вы действительно хотите удалить заметку \"%1$s\"? Это действие необратимо.</string>
+
+    <!-- Feedback Snackbars -->
+    <string name="msg_note_created">Заметка успешно создана</string>
+    <string name="msg_note_updated">Заметка успешно обновлена</string>
+    <string name="msg_note_deleted">Заметка успешно удалена</string>
+    <string name="msg_sync_success">Синхронизация завершена: %1$d заметок сохранено в JSON</string>
+    <string name="msg_sync_failure">Ошибка синхронизации: %1$s</string>
+    <string name="msg_storage_switched">Переключено на %1$s</string>
+    <string name="msg_operation_failed">Ошибка операции: %1$s</string>
+    <string name="msg_note_not_found">Заметка не найдена</string>
+    <string name="msg_save_failed">Не удалось сохранить заметку</string>
+    <string name="msg_delete_failed">Не удалось удалить заметку</string>
+
+    <!-- Content Descriptions -->
+    <string name="cd_add_note">Добавить новую заметку</string>
+    <string name="cd_delete_note">Удалить заметку</string>
+    <string name="cd_edit_note">Редактировать заметку</string>
+    <string name="cd_back">Вернуться назад</string>
+    <string name="cd_sync">Синхронизировать SQLite с JSON-файлом</string>
+</resources>

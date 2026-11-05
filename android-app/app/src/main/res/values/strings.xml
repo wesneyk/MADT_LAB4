@@ -1,0 +1,59 @@
+<resources>
+    <string name="app_name">Notes Storage</string>
+    <string name="screen_title_notes">Notes</string>
+    <string name="screen_title_note_details">Note Details</string>
+    <string name="screen_title_new_note">New Note</string>
+    <string name="screen_title_edit_note">Edit Note</string>
+
+    <!-- Storage Switcher -->
+    <string name="storage_sqlite">SQLite (Primary)</string>
+    <string name="storage_json">JSON File (Secondary)</string>
+
+    <!-- Buttons &amp; Actions -->
+    <string name="action_sync">Sync SQLite → JSON</string>
+    <string name="action_add_note">Create Note</string>
+    <string name="action_save">Save</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_edit">Edit</string>
+    <string name="action_delete">Delete</string>
+    <string name="action_confirm">Confirm</string>
+    <string name="action_back">Back</string>
+
+    <!-- Fields &amp; Labels -->
+    <string name="label_title">Title</string>
+    <string name="label_content">Content</string>
+    <string name="label_created_at">Created: %1$s</string>
+    <string name="label_updated_at">Updated: %1$s</string>
+
+    <!-- Empty States -->
+    <string name="empty_notes_title">No notes yet</string>
+    <string name="empty_notes_subtitle">Tap the + button below to create your first note.</string>
+
+    <!-- Validation Errors -->
+    <string name="error_empty_title">Title cannot be empty</string>
+    <string name="error_empty_content">Content cannot be empty</string>
+    <string name="error_empty_both">Title and content cannot be empty</string>
+
+    <!-- Delete Confirmation Dialog -->
+    <string name="dialog_delete_title">Delete Note?</string>
+    <string name="dialog_delete_message">Are you sure you want to delete note \"%1$s\"? This action cannot be undone.</string>
+
+    <!-- Feedback Snackbars -->
+    <string name="msg_note_created">Note created successfully</string>
+    <string name="msg_note_updated">Note updated successfully</string>
+    <string name="msg_note_deleted">Note deleted successfully</string>
+    <string name="msg_sync_success">Synced successfully: %1$d notes exported to JSON</string>
+    <string name="msg_sync_failure">Sync failed: %1$s</string>
+    <string name="msg_storage_switched">Switched to %1$s</string>
+    <string name="msg_operation_failed">Operation failed: %1$s</string>
+    <string name="msg_note_not_found">Note not found</string>
+    <string name="msg_save_failed">Failed to save note</string>
+    <string name="msg_delete_failed">Failed to delete note</string>
+
+    <!-- Content Descriptions -->
+    <string name="cd_add_note">Add new note</string>
+    <string name="cd_delete_note">Delete note</string>
+    <string name="cd_edit_note">Edit note</string>
+    <string name="cd_back">Navigate back</string>
+    <string name="cd_sync">Sync SQLite to JSON file</string>
+</resources>
