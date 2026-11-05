@@ -1,0 +1,1 @@
+Dual-storage Android note-taking app built with Jetpack Compose (Material 3), Room SQLite, and resilient JSON file persistence featuring one-way data synchronization, strict input validation, and full English/Russian localization.

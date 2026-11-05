@@ -1,0 +1,234 @@
+diff --git a/app/src/main/java/com/example/notesstorage/storage/JsonNotesStorage.kt b/app/src/main/java/com/example/notesstorage/storage/JsonNotesStorage.kt
+index f661dd7..a94ae03 100644
+--- a/app/src/main/java/com/example/notesstorage/storage/JsonNotesStorage.kt
++++ b/app/src/main/java/com/example/notesstorage/storage/JsonNotesStorage.kt
+@@ -10,28 +10,20 @@ import org.json.JSONArray
+ import org.json.JSONObject
+ import java.io.File
+ import java.io.FileOutputStream
+-import java.nio.file.Files
+-import java.nio.file.StandardCopyOption
+ 
+-class JsonNotesStorage(private val context: Context) {
++class JsonNotesStorage(
++    private val filesDir: File
++) {
++    constructor(context: Context) : this(context.filesDir)
+ 
+     private val mutex = Mutex()
+     private val fileName = "notes.json"
+     private val targetFile: File
+-        get() = File(context.filesDir, fileName)
++        get() = File(filesDir, fileName)
+ 
+     suspend fun readNotes(): List<Note> = withContext(Dispatchers.IO) {
+         mutex.withLock {
+-            val file = targetFile
+-            if (!file.exists()) {
+-                return@withLock emptyList()
+-            }
+-            try {
+-                val jsonString = file.readText(Charsets.UTF_8)
+-                parseJson(jsonString)
+-            } catch (e: Exception) {
+-                emptyList()
+-            }
++            readNotesInternal()
+         }
+     }
+ 
+@@ -41,19 +33,7 @@ class JsonNotesStorage(private val context: Context) {
+ 
+     suspend fun writeNotes(notes: List<Note>): Boolean = withContext(Dispatchers.IO) {
+         mutex.withLock {
+-            val jsonArray = JSONArray()
+-            for (note in notes) {
+-                val obj = JSONObject().apply {
+-                    put("id", note.id)
+-                    put("title", note.title)
+-                    put("content", note.content)
+-                    put("createdAt", note.createdAt)
+-                    put("updatedAt", note.updatedAt)
+-                }
+-                jsonArray.put(obj)
+-            }
+-            val jsonString = jsonArray.toString(2)
+-            safeWrite(jsonString)
++            writeNotesInternal(notes)
+         }
+     }
+ 
+@@ -103,7 +83,15 @@ class JsonNotesStorage(private val context: Context) {
+ 
+     private fun readNotesInternal(): List<Note> {
+         val file = targetFile
++        val backupFile = File(filesDir, "$fileName.bak")
++
++        // Auto-recover from backup file if a crash occurred during atomic rename
++        if (!file.exists() && backupFile.exists()) {
++            backupFile.renameTo(file)
++        }
++
+         if (!file.exists()) return emptyList()
++
+         return try {
+             val text = file.readText(Charsets.UTF_8)
+             parseJson(text)
+@@ -147,12 +135,13 @@ class JsonNotesStorage(private val context: Context) {
+     }
+ 
+     private fun safeWrite(content: String): Boolean {
+-        val filesDir = context.filesDir
+         if (!filesDir.exists()) {
+             filesDir.mkdirs()
+         }
++
+         val tempFile = File(filesDir, "$fileName.tmp")
+         val destination = targetFile
++        val backupFile = File(filesDir, "$fileName.bak")
+ 
+         return try {
+             FileOutputStream(tempFile).use { fos ->
+@@ -160,22 +149,27 @@ class JsonNotesStorage(private val context: Context) {
+                 fos.flush()
+                 fos.fd.sync()
+             }
+-            try {
+-                Files.move(
+-                    tempFile.toPath(),
+-                    destination.toPath(),
+-                    StandardCopyOption.ATOMIC_MOVE,
+-                    StandardCopyOption.REPLACE_EXISTING
+-                )
+-            } catch (ex: Exception) {
+-                Files.move(
+-                    tempFile.toPath(),
+-                    destination.toPath(),
+-                    StandardCopyOption.REPLACE_EXISTING
+-                )
++
++            if (destination.exists()) {
++                if (backupFile.exists()) {
++                    backupFile.delete()
++                }
++                if (!destination.renameTo(backupFile)) {
++                    destination.delete()
++                }
++                if (tempFile.renameTo(destination)) {
++                    backupFile.delete()
++                    true
++                } else {
++                    if (backupFile.exists()) {
++                        backupFile.renameTo(destination)
++                    }
++                    false
++                }
++            } else {
++                tempFile.renameTo(destination)
+             }
+-            true
+-        } catch (e: Exception) {
++        } catch (t: Throwable) {
+             if (tempFile.exists()) {
+                 tempFile.delete()
+             }
+diff --git a/app/src/main/java/com/example/notesstorage/viewmodel/NotesViewModel.kt b/app/src/main/java/com/example/notesstorage/viewmodel/NotesViewModel.kt
+index 336e37a..d10580b 100644
+--- a/app/src/main/java/com/example/notesstorage/viewmodel/NotesViewModel.kt
++++ b/app/src/main/java/com/example/notesstorage/viewmodel/NotesViewModel.kt
+@@ -10,6 +10,7 @@ import com.example.notesstorage.model.StorageType
+ import com.example.notesstorage.repository.NotesRepository
+ import com.example.notesstorage.repository.NotesRepositoryImpl
+ import com.example.notesstorage.storage.JsonNotesStorage
++import kotlinx.coroutines.Job
+ import kotlinx.coroutines.flow.MutableSharedFlow
+ import kotlinx.coroutines.flow.MutableStateFlow
+ import kotlinx.coroutines.flow.SharedFlow
+@@ -45,6 +46,8 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
+     private val _eventFlow = MutableSharedFlow<UiEvent>()
+     val eventFlow: SharedFlow<UiEvent> = _eventFlow.asSharedFlow()
+ 
++    private var notesObservationJob: Job? = null
++
+     init {
+         viewModelScope.launch {
+             (repository as? NotesRepositoryImpl)?.initialize()
+@@ -54,13 +57,14 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
+ 
+     fun switchStorage(storageType: StorageType) {
+         if (_uiState.value.currentStorage == storageType) return
+-        _uiState.update { it.copy(currentStorage = storageType) }
++        _uiState.update { it.copy(currentStorage = storageType, selectedNote = null) }
+         loadNotesForCurrentStorage()
+     }
+ 
+     private fun loadNotesForCurrentStorage() {
+         val currentStorage = _uiState.value.currentStorage
+-        viewModelScope.launch {
++        notesObservationJob?.cancel()
++        notesObservationJob = viewModelScope.launch {
+             _uiState.update { it.copy(isLoading = true) }
+             try {
+                 repository.getNotesFlow(currentStorage).collect { noteList ->
+@@ -106,32 +110,29 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
+         viewModelScope.launch {
+             val currentStorage = _uiState.value.currentStorage
+             val now = System.currentTimeMillis()
++            val noteToSave: Note
+             val success = if (id == null) {
+-                val newNote = Note(
++                noteToSave = Note(
+                     title = trimmedTitle,
+                     content = trimmedContent,
+                     createdAt = now,
+                     updatedAt = now
+                 )
+-                repository.insertNote(newNote, currentStorage)
++                repository.insertNote(noteToSave, currentStorage)
+             } else {
+                 val existing = repository.getNoteById(id, currentStorage)
+-                val updatedNote = Note(
++                noteToSave = Note(
+                     id = id,
+                     title = trimmedTitle,
+                     content = trimmedContent,
+                     createdAt = existing?.createdAt ?: now,
+                     updatedAt = now
+                 )
+-                repository.updateNote(updatedNote, currentStorage)
++                repository.updateNote(noteToSave, currentStorage)
+             }
+ 
+             if (success) {
+-                // If secondary JSON file, reload notes
+-                if (currentStorage == StorageType.JSON_FILE) {
+-                    val updatedList = repository.getNotes(StorageType.JSON_FILE)
+-                    _uiState.update { it.copy(notes = updatedList) }
+-                }
++                _uiState.update { it.copy(selectedNote = noteToSave) }
+                 val msgResId = if (id == null) R.string.msg_note_created else R.string.msg_note_updated
+                 _eventFlow.emit(UiEvent.ShowSnackbar(msgResId))
+                 onSuccess()
+@@ -146,9 +147,8 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
+             val currentStorage = _uiState.value.currentStorage
+             val success = repository.deleteNote(id, currentStorage)
+             if (success) {
+-                if (currentStorage == StorageType.JSON_FILE) {
+-                    val updatedList = repository.getNotes(StorageType.JSON_FILE)
+-                    _uiState.update { it.copy(notes = updatedList) }
++                _uiState.update { state ->
++                    if (state.selectedNote?.id == id) state.copy(selectedNote = null) else state
+                 }
+                 _eventFlow.emit(UiEvent.ShowSnackbar(R.string.msg_note_deleted))
+             } else {
+@@ -170,10 +170,6 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
+                         listOf(count)
+                     )
+                 )
+-                if (_uiState.value.currentStorage == StorageType.JSON_FILE) {
+-                    val updatedList = repository.getNotes(StorageType.JSON_FILE)
+-                    _uiState.update { it.copy(notes = updatedList) }
+-                }
+             }.onFailure { err ->
+                 _eventFlow.emit(
+                     UiEvent.ShowSnackbar(
