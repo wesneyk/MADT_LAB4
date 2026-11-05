@@ -32,3 +32,20 @@ Run by the Claude Code agent on 2026-11-05, 21:18–21:30 (UTC+02:00). The agent
 | 21 | Review fix 1 on Android 7.0/7.1 (API 24/25) | No crash when writing `notes.json` | Not run: no API 24/25 system image is installed (available: API 30, 33, 34, 37.2). Writing `notes.json` works on API 34 (tests 13–16) | NOT RUN | – |
 
 Not covered here: the build and run inside the Android Studio UI (to be done and screenshotted by the user), and instrumented UI tests (the project has none).
+
+## Re-check after the final fixes (2026-11-05, late)
+
+Run by the coordinating Claude Code session after the code fixes in commit `26106c5` and before the documentation update. Device: Pixel_6 emulator, Android 14 (API 34), started headless with `-no-snapshot`. Method: `adb install`, `adb shell input`, `uiautomator dump`, `adb shell screencap` with `adb pull`. The storage code (`JsonNotesStorage.kt`, `NotesRepositoryImpl`) did not change in these fixes; the changed code is the event delivery in `NotesViewModel.kt` and the validation in `model/NoteValidator.kt`.
+
+| # | Check | Expected | Actual | Status | Evidence |
+|---|-------|----------|--------|--------|----------|
+| R1 | Clean build | `gradlew clean assembleDebug` succeeds | BUILD SUCCESSFUL in 58 s (after the Gradle daemons were stopped; an earlier `clean` failed with "Failed to delete some children" while a daemon held the files) | PASS | command output |
+| R2 | Build, unit tests, lint | `assembleDebug testDebugUnitTest lintDebug` succeed | BUILD SUCCESSFUL in 12 s (incremental); `NotesStorageUnitTest`: 15 tests, 0 failures, 0 errors; lint exit code 0 (lint failed before the fix on the `gradle.properties` JDK path) | PASS | command output |
+| R3 | Build without `JAVA_HOME` | Build runs with Java 8 on PATH | `gradlew.bat --version` and `assembleDebug` succeed; the Gradle daemon JVM is JDK 25 (from `gradle/gradle-daemon-jvm.properties`) | PASS | command output |
+| R4 | App launch | No crash | Main screen shown; crash buffer empty; `FATAL EXCEPTION` count 0 in `logcat -d` | PASS | command output |
+| R5 | Snackbar after creating a note | "Note created successfully" | Shown on the list after Save (emulator clock 08:41) | PASS | [52](screenshots/52_recheck_create_snackbar.png) |
+| R6 | Snackbar after editing a note | "Note updated successfully" | Shown after Save; title changed to "SnackTestEdited" (08:42) | PASS | [53](screenshots/53_recheck_update_snackbar.png) |
+| R7 | Sync SQLite → JSON, snackbar | "Synced successfully: N notes exported to JSON" | "Synced successfully: 0 notes exported to JSON" on an empty list (08:49) | PASS | [54](screenshots/54_recheck_sync_snackbar.png) |
+| R8 | Delete, snackbar | Dialog "Delete Note?", then "Note deleted successfully" | Dialog shows the note title and Cancel/Delete; snackbar "Note deleted successfully" after Delete (08:50) | PASS | [55](screenshots/55_recheck_delete_snackbar.png) |
+
+Not re-run after the final fixes: the Russian UI, API 24/25, the Android Studio UI run, and the sync and JSON-tab checks with several notes (tests 13–20 above). The storage code did not change, so their results from 21:18–21:30 still describe the code in the repository.

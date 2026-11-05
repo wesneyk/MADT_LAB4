@@ -120,3 +120,19 @@ Not one of the five required AI sessions. Used to set up the tools and the works
 
 - The user asked whether Claude can be hidden in the commits ("а в коммитах можно сделать чтобы не было видно тебя или как"). The agent checked: author and committer of all 5 commits are the user (Najaf); "claude" appears only through the trailer `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`. The agent explained that removing it means rewriting the 5 commits (same files, new hashes) and a force-push, and that the documents keep stating that Session 4 was a Claude Code session.
 - User decision: "Да, убери" ("Yes, remove it"). The agent forwarded the request to the Session 4 (GitHub) session: rewrite only the commit messages, same trees, force-push with lease, record old → new hashes in its report, no Co-Authored-By line in future commits. Session 5 was told that the hashes will change.
+
+## 2026-11-05 late evening: fixes after the submission draft (coordinating Claude Code session)
+
+- User decisions: "Да, исправь" (fix the missing confirmation after saving); "Да, все, что надо исправить, чтобы работало, исправляй обязательно. Не надо у меня даже спрашивать" (fix everything needed so that it runs; do not ask again); "Да, отправь" (push `26106c5`).
+- Gradle without `JAVA_HOME` (Java 8 on PATH): `gradlew.bat --version` runs (launcher JVM 1.8, daemon JVM 25); `assembleDebug` succeeds.
+- Code: `NotesViewModel.kt` one-shot events moved from `MutableSharedFlow` to a buffered `Channel`; `model/NoteValidator.kt` added and used by `saveNote()`; `NotesStorageUnitTest.kt` rewritten to 15 tests on the real classes; the `org.gradle.java.home` line removed from `gradle.properties`.
+- `gradlew clean` failed once with "Failed to delete some children" (a Gradle daemon still held files). After `gradlew --stop`, the clean build succeeded: `assembleDebug testDebugUnitTest lintDebug` BUILD SUCCESSFUL, 15/15 tests, lint exit code 0.
+- Emulator Pixel_6 (API 34), started headless: a new note showed "Note created successfully" (08:41); an edited note showed "Note updated successfully" (08:42); sync showed "Synced successfully: 0 notes exported to JSON" (08:49); delete showed "Note deleted successfully" (08:50). `logcat -d` showed no `FATAL EXCEPTION`. Screenshots 52–55 copied to `docs/evidence/screenshots/`. The emulator was shut down afterwards.
+- Commit `26106c5` "Fix save confirmation, real unit tests, remove machine-specific JDK path". Its subject first had a stray BOM from PowerShell piping; the message was rewritten once with `git commit --amend` before the push (the tree did not change: `f303305`). Pushed with `git push origin main`: `83a4e46..26106c5  main -> main`, exit code 0. GitHub `main` = `26106c5`, no `Co-Authored-By` trailer.
+- Documentation updated: `README.md` (build and run instructions, test list, structure, section 18.3), `docs/SESSION_SUMMARY.md` (section 6.2 and section 12), `docs/evidence/TEST_RESULTS.md` (re-check section), `docs/evidence/session4_github_report.md` (section 9), this log.
+- Deliverables rebuilt: see the entries below.
+
+## 2026-11-05 late evening: deliverables rebuilt (coordinating Claude Code session)
+
+- `deliverables/NotesStorageApp-debug.apk`: copied from `android-app/app/build/outputs/apk/debug/app-debug.apk` (built 22:40:18, after the last source change at 22:40:08). 22,344,158 bytes, SHA-256 `17F4DD63616F11C52C44E9D5EC61387EDB166EBD26E183566F1040EAFD6BA8A1`.
+- `deliverables/NotesStorageApp-submission.zip`: rebuilt from the working tree (`git ls-files -co --exclude-standard`): 103 files under `NotesStorageApp/`, 10,672,872 bytes. Checked: no `local.properties`, no `build/`, `.gradle/`, `.idea/`, no APK, no `.git`; `docs/SESSION_SUMMARY.md`, `README.md` and `NoteValidator.kt` are inside.

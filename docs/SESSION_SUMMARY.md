@@ -229,9 +229,9 @@ The user typed `continue` twice and switched Gemini 3.8 Flash Medium → High �
 - **JSON (secondary):** `JsonNotesStorage` writes `filesDir/notes.json` with `org.json`, a `Mutex` and `Dispatchers.IO`. The generated version wrote atomically with `notes.json.tmp` and `java.nio.file.Files.move`; Session 2 replaced this (see section 5).
 - **CRUD:** create and edit on `NoteEditScreen` (Title, Content, Save, Cancel), view on `NoteDetailScreen` (title, created/updated time, content), delete from the list card or the detail screen through an `AlertDialog` "Delete Note?" with Cancel/Delete; snackbars after each operation.
 - **Synchronization:** "Sync SQLite → JSON" reads all SQLite notes and replaces `notes.json`, keeping UUIDs and timestamps, so there are no duplicates and notes deleted in SQLite disappear from JSON; a progress indicator and a snackbar "Synced successfully: N notes exported to JSON".
-- **Validation:** in `NotesViewModel.saveNote()`, title and content are trimmed; if either is empty, saving is refused and "Title cannot be empty" / "Content cannot be empty" appear under the fields. It works for both storages because it runs before the repository call.
+- **Validation:** `NoteValidator.validate()` (called by `NotesViewModel.saveNote()`; moved there after the session, see section 12) trims title and content; if either is empty, saving is refused and "Title cannot be empty" / "Content cannot be empty" appear under the fields. It works for both storages because it runs before the repository call.
 - **Localization:** `values/strings.xml` and `values-ru/strings.xml`. The hard-coded ViewModel error messages found by the agent after generation were moved to resources during the fix (Antigravity reports 41 strings in both languages).
-- **Unit tests:** `NotesStorageUnitTest` with 4 JVM tests (`testRoomCrudOperations`, `testJsonCrudOperations`, `testOneWaySyncSqliteToJson`, `testValidationLogic`). The Room and JSON tests run against mock classes (`InMemoryMockNoteDao`, `JsonNotesStorageMock`), not against real Room or the real `JsonNotesStorage`.
+- **Unit tests:** at generation time there were 4 JVM tests with mock classes. After the session they were rewritten (section 12): `NotesStorageUnitTest` now has 15 JVM tests. JSON storage, one-way sync and storage separation run against the real `JsonNotesStorage` and `NotesRepositoryImpl`; SQLite CRUD still uses `InMemoryMockNoteDao`, because the Room engine needs a device or Robolectric.
 - **Problems during generation, as they happened:** the crash on launch (`NoSuchMethodException`), the missing `AppDatabase_Impl`, then a KSP/built-in-Kotlin build failure at 20:38:53, the Antigravity usage limit and the model changes; all were resolved in the same conversation.
 
 ---
@@ -273,7 +273,7 @@ Source: [TEST_RESULTS.md](evidence/TEST_RESULTS.md). Run by the coordinating Cla
 | Test | Expected Result | Actual Result | Status |
 |------|-----------------|---------------|--------|
 | Gradle build | `assembleDebug` succeeds | BUILD SUCCESSFUL in 38s, 1 compiler warning in test code | PASS |
-| Unit tests | All tests pass | `NotesStorageUnitTest`: 4 tests, 0 failures, 0 errors (Room and JSON tests use mock classes) | PASS |
+| Unit tests | All tests pass | 21:18 run: `NotesStorageUnitTest` 4 tests, 0 failures (mock classes). Re-run after the final fixes: 15 tests, 0 failures (section 6.2) | PASS |
 | App launch | Main screen without crash | "Notes" title, SQLite/JSON switch, "Sync SQLite → JSON", FAB; crash buffer empty | PASS |
 | Default storage | SQLite selected on start | "SQLite (Primary)" selected after every launch | PASS |
 | Validation: title and content empty | Saving blocked, error messages shown | "Title cannot be empty", "Content cannot be empty"; stayed on "New Note" | PASS |
@@ -298,6 +298,22 @@ Source: [TEST_RESULTS.md](evidence/TEST_RESULTS.md). Run by the coordinating Cla
 
 Other builds recorded in the work log (all with the Gradle wrapper): 20:25 build and 4/4 tests passed but the app crashed on launch; 20:55 BUILD SUCCESSFUL in 37s, 4/4 tests, no crash; ~22:02 BUILD SUCCESSFUL in 43s, APK installed and launched without a crash.
 
+### 6.2 Re-check after the final fixes (2026-11-05, late)
+
+Run by the coordinating Claude Code session after the changes in section 12. Device: Pixel_6 emulator, Android 14 (API 34). Screenshots 52–55 are in `evidence/screenshots/`.
+
+| Check | Expected Result | Actual Result | Status |
+|-------|-----------------|---------------|--------|
+| Build | `assembleDebug`, `testDebugUnitTest`, `lintDebug` succeed | Clean build BUILD SUCCESSFUL in 58 s (after the Gradle daemons were stopped); incremental build BUILD SUCCESSFUL in 12 s; lint exit code 0 | PASS |
+| Unit tests | All tests pass | 15 tests, 0 failures, 0 errors | PASS |
+| Build without `JAVA_HOME` | Build runs with Java 8 on PATH | BUILD SUCCESSFUL; Gradle started its daemon with a JDK 25 found on this computer | PASS |
+| App launch | Main screen without crash | Main screen shown; crash buffer empty; no `FATAL EXCEPTION` in logcat | PASS |
+| Save new note | "Note created successfully" shown | Shown on the list after Save (screenshot 52) | PASS |
+| Save edited note | "Note updated successfully" shown | Shown after Save; title changed to "SnackTestEdited" (screenshot 53) | PASS |
+| Sync SQLite → JSON | "Synced successfully: N notes exported to JSON" | "Synced successfully: 0 notes exported to JSON" on an empty list (screenshot 54) | PASS |
+| Delete note | Confirmation dialog, then "Note deleted successfully" | Dialog "Delete Note?" with the note title; snackbar "Note deleted successfully" after Delete (screenshot 55) | PASS |
+| Russian UI, API 24/25, Android Studio UI run | – | Not re-run after the final fixes | NOT RUN |
+
 ---
 
 ## 7. GitHub Publication
@@ -315,8 +331,10 @@ Other builds recorded in the work log (all with the Gradle wrapper): 20:25 build
   | `1cecf69` | `1a0bbfa` | Add documentation and lab evidence |
   | `7ff4548` | `ef6ea67` | Add README |
   | `6778991` | `83a4e46` | Add GitHub publication report |
+  | — | `26106c5` | Fix save confirmation, real unit tests, remove machine-specific JDK path (after Session 5; section 12) |
 
 - **Push:** first push `git push -u origin main` → `* [new branch] main -> main`, exit code 0; the coordinating agent's check at ~21:58: `main` = `origin/main` = `6778991`, 89 tracked files, none from `build/`, `.gradle/`, `.idea/`, `.kotlin/`, no `local.properties`, no APK; at that time GitHub listed the contributors "wesneyk" and "claude". The rewritten history is on GitHub too: read-only check by this session at 22:10 (`gh api`): `main` = `83a4e46`, no `Co-Authored-By` in any commit message, contributors: `wesneyk` only. The Session 4 report still marks the force-push output as "pending" (it says the push was blocked inside that session), so the push output itself is not recorded.
+- **Later push (after Session 5):** `git push origin main` → `83a4e46..26106c5  main -> main`, exit code 0. GitHub `main` = `26106c5`, equal to the local HEAD (section 12).
 - **Published structure:** `.gitignore`, `README.md`, `android-app/` (Gradle project, sources in `app/src/main/java/com/example/notesstorage/` with `database`, `model`, `repository`, `storage`, `ui`, `viewmodel`, `MainActivity.kt`), `docs/` (`CODE_REVIEW.md`, `WORK_LOG.md`, `prompts/`, `evidence/` with `TEST_RESULTS.md`, `ai_studio/`, `logs/`, `screenshots/`, `transcripts/`, `session4_github_report.md`). README renders on GitHub with headings, tables and app screenshots ([screenshot 23](evidence/screenshots/23_github_readme_rendered.png)).
 - **Not yet on GitHub when this report was written** (local working copy; a separate GitHub session commits them): this file, `docs/prompts/05_session_summary_prompt.md`, the updated `docs/WORK_LOG.md`, the updated `docs/evidence/session4_github_report.md` (its section 8 on the rewrite), and 7 screenshots taken after the push: `10b`, `13`, `14b`, `16`, `20`, `22`, `23`. Their links in this report work in the local copy and will work on GitHub once they are committed.
 
@@ -324,7 +342,7 @@ Other builds recorded in the work log (all with the Gradle wrapper): 20:25 build
 
 ## 8. Evidence and Screenshots
 
-All screenshots are in `docs/evidence/screenshots/` (46 files). The copies were redacted for personal data (browser tab bar and account e-mail on the AI Studio screenshots; the left strip with desktop icons / other windows on 01–06; the Claude app account name behind 25–27); nothing else was changed.
+All screenshots are in `docs/evidence/screenshots/` (50 files, including the re-check screenshots 52–55 from section 6.2). The copies were redacted for personal data (browser tab bar and account e-mail on the AI Studio screenshots; the left strip with desktop icons / other windows on 01–06; the Claude app account name behind 25–27); nothing else was changed.
 
 **Session 1, Code Generation (Antigravity):**
 
@@ -417,15 +435,15 @@ All screenshots are in `docs/evidence/screenshots/` (46 files). The copies were 
 | Session summary (this file) | `docs/SESSION_SUMMARY.md` | Contains `<@ListOfsessions>`; for upload to Moodle |
 | README | [README.md](../README.md) | 19 sections, written in Session 3 |
 | Code review report | [CODE_REVIEW.md](CODE_REVIEW.md) | Written in Session 2 |
-| Test results | [TEST_RESULTS.md](evidence/TEST_RESULTS.md) | 21 checks, 20 PASS, 1 NOT RUN |
-| Debug APK | `deliverables/NotesStorageApp-debug.apk` | 22,284,161 bytes, SHA-256 `37D16451…5E54EE2`; package `com.example.notesstorage`, versionName 1.0, minSdk 24, targetSdk 37, label "Notes Storage"; installed and launched on emulator-5554 without a crash. Not in the Git repository (`*.apk` is ignored) |
-| Submission archive | `deliverables/NotesStorageApp-submission.zip` | 10,297,842 bytes; 96 repository files under `NotesStorageApp/` (no `local.properties`, `build/` or `.git`). Built at 22:01, before this file and `05_session_summary_prompt.md` existed, so it does not contain them yet; the work log says it is rebuilt after `SESSION_SUMMARY.md` exists. Not in the Git repository (`*.zip` is ignored) |
+| Test results | [TEST_RESULTS.md](evidence/TEST_RESULTS.md) | 21 checks, 20 PASS, 1 NOT RUN (run 21:18–21:30); re-check after the final fixes in section 6.2 |
+| Debug APK | `deliverables/NotesStorageApp-debug.apk` | Rebuilt on 2026-11-05 at 22:40 from the final code (after the fixes in commit `26106c5`): 22,344,158 bytes, SHA-256 `17F4DD63616F11C52C44E9D5EC61387EDB166EBD26E183566F1040EAFD6BA8A1`; package `com.example.notesstorage`, versionName 1.0, minSdk 24, targetSdk 37, label "Notes Storage". The version installed on the emulator for section 6.2 is this build. Not in the Git repository (`*.apk` is ignored) |
+| Submission archive | `deliverables/NotesStorageApp-submission.zip` | Rebuilt on 2026-11-05 late evening from the working tree: 10,672,872 bytes, 103 files under `NotesStorageApp/` (the 99 files committed in `26106c5` plus the 4 re-check screenshots 52–55 and the uncommitted documentation updates listed in section 12). No `local.properties`, `build/`, `.gradle/`, `.idea/`, APK or `.git`. Not in the Git repository (`*.zip` is ignored) |
 
 ---
 
 ## 10. Conclusion
 
-The Notes Storage app meets the functional part of the assignment, and every function was checked on a real emulator: CRUD for notes with title and content, Room/SQLite as primary and a JSON file as secondary storage, a user-selected storage, one-way SQLite → JSON synchronization without duplicates and with deletions propagated, validation of empty and whitespace-only input, and full English and Russian string resources. 20 of the 21 checks in TEST_RESULTS.md passed. The one check not run is the review fix on Android 7.0/7.1 (API 24/25), because no such emulator image was installed. No build or run from the Android Studio UI was recorded; both were done with the Gradle wrapper and on the emulator.
+The Notes Storage app meets the functional part of the assignment (final fixes made after the session are described in section 12), and every function was checked on a real emulator: CRUD for notes with title and content, Room/SQLite as primary and a JSON file as secondary storage, a user-selected storage, one-way SQLite → JSON synchronization without duplicates and with deletions propagated, validation of empty and whitespace-only input, and full English and Russian string resources. 20 of the 21 checks in TEST_RESULTS.md passed. The one check not run is the review fix on Android 7.0/7.1 (API 24/25), because no such emulator image was installed. No build or run from the Android Studio UI was recorded; both were done with the Gradle wrapper and on the emulator.
 
 The process requirements were met with separate AI sessions: code generation started with `/grill-me` (Antigravity), an independent review in Google AI Studio with exactly two improvements in two files, documentation in a new AI Studio chat, GitHub publication and this report in separate Claude Code sessions. Several things did not go to plan, and the log records them as they happened: Session 1 ran in the WordCounter workspace and the first build crashed on launch; the Antigravity quota ran out, which moved the review to AI Studio and Sessions 4–5 to Claude Code; AI Studio's files had to be placed into the project by the coordinating agent; the README needed two follow-up messages. The user's own input is documented throughout: the planning decisions (`A A A`), the short follow-ups (`work`, `продолжай`, `на англ результат напиши`), the choice of tools and workspaces, and the publication and submission decisions. What remains: committing and pushing this file and the newer evidence (separate GitHub session), rebuilding the submission archive, and the Moodle upload, which the user does personally.
 
@@ -455,8 +473,27 @@ The process requirements were met with separate AI sessions: code generation sta
 | Russian | `values-ru/strings.xml` | TEST_RESULTS test 20; [49](evidence/screenshots/49_app_russian_list.png), [50](evidence/screenshots/50_app_russian_validation.png), [51](evidence/screenshots/51_app_russian_delete_dialog.png) | PASS |
 | Android Studio build | Project opened in Android Studio (structure only); builds done with the Gradle wrapper and the Android Studio JBR on the command line; no Build → Make Project in the IDE recorded | [25](evidence/screenshots/25_android_studio_structure_res_strings.png)–[27](evidence/screenshots/27_android_studio_structure_repository.png), TEST_RESULTS test 1, [WORK_LOG.md](WORK_LOG.md) | PARTIAL |
 | Application execution | Installed and launched on the Pixel_6 emulator (Android 14, API 34) with adb; API 24/25 not tested | TEST_RESULTS tests 3–20; [emulator launch](evidence/screenshots/emulator_launch_after_session1_fix.png) | PASS |
-| GitHub commit and push | 5 commits pushed to `main` (exit code 0; remote = local head); later rewritten without the Co-Authored-By trailer, GitHub `main` = `83a4e46` (checked at 22:10). Files created after the push are not yet committed | [session4_github_report.md](evidence/session4_github_report.md), [20](evidence/screenshots/20_github_commits.png) (before the rewrite), section 7 | PASS |
+| GitHub commit and push | 5 commits pushed to `main` (exit code 0; remote = local head); later rewritten without the Co-Authored-By trailer, GitHub `main` = `83a4e46` (checked at 22:10); after Session 5 the commit `26106c5` was pushed (section 12) | [session4_github_report.md](evidence/session4_github_report.md), [20](evidence/screenshots/20_github_commits.png) (before the rewrite), section 7 | PASS |
 | README.md published | README.md on GitHub, rendered | [23](evidence/screenshots/23_github_readme_rendered.png), [README.md](../README.md) | PASS |
 | GitHub repository description | One-line description from Session 3, exact match | [22](evidence/screenshots/22_github_repository_and_description.png), [session3_github_description.txt](evidence/ai_studio/session3_github_description.txt) | PASS |
-| Screenshots and evidence | 46 screenshots plus logs, transcript, prompts and AI Studio material; missing: 11, 12, 15, 17 and Android Studio Build/Run; 7 newer screenshots not yet on GitHub | Section 8 | PARTIAL |
+| Screenshots and evidence | 50 screenshots plus logs, transcript, prompts and AI Studio material; missing: 11, 12, 15, 17 and Android Studio Build/Run; the 7 newer screenshots are in `26106c5`; re-check screenshots 52–55 (section 6.2) are in the working tree | Section 8 | PARTIAL |
 | Moodle submission | Not done yet; the user uploads this file and the GitHub link personally ("Загружу сам") | – | NOT COMPLETED |
+
+## 12. Changes after this summary was first written
+
+After Session 5 wrote this file, the coordinating Claude Code session made the changes below at the user's request. They were not made in any of the five AI sessions listed in section 2, and the user's messages about them are quoted below.
+
+- **Why:** the submission draft had three problems: the "Note created/updated" confirmation never appeared after Save (section 6, row "Create"), the `gradle.properties` file contained a machine-specific JDK path that made `lintDebug` fail and broke builds on other computers, and the unit tests tested copies of the storage classes instead of the app classes.
+- **Code, commit `26106c5` (pushed to `main`, `83a4e46..26106c5`):**
+  - `viewmodel/NotesViewModel.kt`: one-shot UI events moved from `MutableSharedFlow` to a buffered `Channel` (`receiveAsFlow()`), so the confirmation survives the screen change after Save.
+  - `model/NoteValidator.kt` (new): trimming and empty checks as a pure function; `NotesViewModel.saveNote()` calls it. The behaviour did not change.
+  - `gradle.properties`: removed `org.gradle.java.home=C:\Program Files\Android\Android Studio\jbr`.
+  - `app/src/test/.../NotesStorageUnitTest.kt`: rewritten to 15 tests on the real `JsonNotesStorage`, `NotesRepositoryImpl` and `NoteValidator`. SQLite CRUD still uses `InMemoryMockNoteDao`.
+- **Documentation (working tree at the time of writing; not yet committed):** `README.md` (build and run instructions, test list, project structure, section 18.3 "Final fixes"), this file, `evidence/TEST_RESULTS.md` (section "Re-check after the final fixes"), `WORK_LOG.md`, `evidence/session4_github_report.md`, screenshots 52–55, and the APK and submission archive in `deliverables/` (sizes and hashes in section 9).
+- **Verification:** section 6.2 and `evidence/TEST_RESULTS.md`.
+- **User's messages that led to these changes (verbatim, with translation):**
+  - "Да, исправь" — "Yes, fix it" (fix the missing confirmation after save).
+  - "Да, все, что надо исправить, чтобы работало, исправляй обязательно. Не надо у меня даже спрашивать." — "Yes, fix everything that needs fixing so that it works, you have to. Don't even ask me." (the README, summary and session documents included).
+  - "Да, отправь" — "Yes, send it" (push commit `26106c5`).
+- **Not changed:** the five AI sessions, their prompts and outputs, and the user-input records in section 3.
+- **Still open for the submission:** the Moodle upload is done by the user ("Загружу сам"). The zip archive and APK were rebuilt from the working tree; see section 9.

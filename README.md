@@ -175,7 +175,7 @@ The application supports complete CRUD functionality in both storage modes:
 ---
 
 ## 11. Input Validation
-To maintain clean persistent states, input validation is applied in `NotesViewModel.saveNote()` before executing any database or file transactions:
+To maintain clean persistent states, input validation runs before any database or file transaction. The rules live in `NoteValidator.validate()` (`model/NoteValidator.kt`), which `NotesViewModel.saveNote()` calls:
 - **Title Validation:** Must not be empty or consist solely of whitespace (`rawTitle.trim().isEmpty()`).
 - **Content Validation:** Must not be empty or consist solely of whitespace (`rawContent.trim().isEmpty()`).
 - **User Feedback:** In-place error messages are rendered below each corresponding text field in `NoteEditScreen`:
@@ -221,7 +221,8 @@ lab_4/
 │   │       │   │   │   ├── NoteDao.kt                # Data access object
 │   │       │   │   │   └── NoteEntity.kt             # Room table entity
 │   │       │   │   ├── model/
-│   │       │   │   │   └── Note.kt                   # Domain model & StorageType enum
+│   │       │   │   │   ├── Note.kt                   # Domain model & StorageType enum
+│   │       │   │   │   └── NoteValidator.kt         # Pure title/content validation
 │   │       │   │   ├── repository/
 │   │       │   │   │   └── NotesRepository.kt        # Repository implementation
 │   │       │   │   ├── storage/
@@ -240,7 +241,7 @@ lab_4/
 │   │       │       └── values-ru/strings.xml         # Russian localized strings
 │   │       └── test/java/com/example/notesstorage/
 │   │           ├── InMemoryMockNoteDao.kt            # Unit test DAO mock
-│   │           └── NotesStorageUnitTest.kt           # JVM unit tests
+│   │           └── NotesStorageUnitTest.kt           # 15 JVM unit tests (real JSON storage, sync and validation; SQLite via DAO mock)
 │   ├── build.gradle.kts                              # Root build script
 │   ├── gradle.properties                             # Gradle build configuration
 │   ├── settings.gradle.kts                           # Module and plugin settings
@@ -248,6 +249,7 @@ lab_4/
 └── docs/
     ├── CODE_REVIEW.md                                # Detailed code review findings
     ├── WORK_LOG.md                                   # Chronological execution log
+    ├── SESSION_SUMMARY.md                            # Final report for submission (Moodle)
     ├── evidence/
     │   ├── TEST_RESULTS.md                           # Verification test report
     │   └── screenshots/                              # Device capture evidence
@@ -259,8 +261,9 @@ lab_4/
 ## 14. Installation Instructions
 
 ### Prerequisites
-- **Android Studio:** Built with Android Studio build 261.26222.65 and its bundled JetBrains Runtime (JDK 25.0.3; Java source/target compatibility is Java 17 in `app/build.gradle.kts`).
-- **Android SDK:** Platforms up to API 37 installed (`minSdk = 24`, `targetSdk = 37`).
+- **Android Studio:** a recent build (the project was built with 261.26222.65). Its bundled JetBrains Runtime (JDK 25) is what Gradle uses when the project is opened in the IDE.
+- **JDK for command-line builds:** Gradle starts its daemon with JDK 25. It uses a JDK 25 found on the computer, or downloads one on the first build (internet required). The most reliable option is to set `JAVA_HOME` to Android Studio's JBR, for example `C:\Program Files\Android\Android Studio\jbr`. Source and target compatibility is Java 17 (`app/build.gradle.kts`).
+- **Android SDK:** platforms 35 to 37 (`compileSdk 37`, `targetSdk 37`, `minSdk 24`). Android Studio writes the SDK path to `android-app/local.properties`, which is not stored in the repository. Without Android Studio, set `ANDROID_HOME` or create `android-app/local.properties` containing `sdk.dir=<path to the SDK>`.
 
 ### Clone and Open
 1. Clone the repository:
@@ -269,33 +272,37 @@ lab_4/
    cd MADT_LAB4
    ```
 2. In Android Studio, select **File &gt; Open...** and choose the `android-app` folder.
-3. Allow Gradle to synchronize dependencies.
+3. Allow Gradle to synchronize dependencies, then press **Run** with an emulator or a device (minSdk 24; tested on Android 14, API 34).
 
 ---
 
 ## 15. How to Run the Application
 
 ### Command Line
-You can build, test, and install the debug application using the bundled Gradle wrapper from within the `android-app` directory.
+Run these from the repository root, the folder that contains `android-app`.
 
-#### On Windows:
+#### On Windows (PowerShell or cmd):
 ```cmd
 cd android-app
 gradlew.bat clean assembleDebug
 gradlew.bat testDebugUnitTest
+gradlew.bat lintDebug
 gradlew.bat installDebug
 adb shell am start -n com.example.notesstorage/.MainActivity
 ```
+`installDebug` needs a running emulator or a connected device (`adb devices` must list it).
 
 #### On Linux / macOS:
 ```bash
 cd android-app
 ./gradlew clean assembleDebug
 ./gradlew testDebugUnitTest
+./gradlew lintDebug
 ./gradlew installDebug
 adb shell am start -n com.example.notesstorage/.MainActivity
 ```
 
+The debug APK is written to `android-app/app/build/outputs/apk/debug/app-debug.apk`. It is not stored in the repository.
 ---
 
 ## 16. How to Use the Application
@@ -328,15 +335,14 @@ At the top of the main screen, use the segmented buttons to select your active s
 ---
 
 ## 17. Testing
-The project verification consists of automated JVM unit tests using mocks and emulator-based functional checks. There are no instrumented Android UI or integration tests in the project.
+The project has 15 automated JVM unit tests and emulator-based functional checks. The unit tests run the real JSON storage, repository sync and validation classes in a temporary folder. The SQLite CRUD tests use a DAO mock, because Room needs an Android device. The project has no instrumented Android UI tests yet.
 
 ### Automated JVM Unit Tests (`NotesStorageUnitTest.kt`)
-Executed via Gradle (`gradlew testDebugUnitTest` / `gradlew.bat testDebugUnitTest`), running 4 test cases (all 4 passed):
-1. `testRoomCrudOperations`: Verifies basic entity conversion and CRUD semantics using `InMemoryMockNoteDao` (mock implementation, not real SQLite/Room engine).
-2. `testJsonCrudOperations`: Tests JSON file serialization, deserialization, updates, and removals using `JsonNotesStorageMock`.
-3. `testOneWaySyncSqliteToJson`: Validates data mirroring from the mock DAO into the mock JSON file, ensuring stale JSON entries are purged.
-4. `testValidationLogic`: Verifies trimming and empty string validation logic on strings.
-
+Run with `gradlew testDebugUnitTest` (Windows: `gradlew.bat testDebugUnitTest`). 15 tests, all pass:
+- **JSON storage (real `JsonNotesStorage`, temporary folder):** `jsonStorage_createReadUpdateDelete`, `jsonStorage_updateAndDeleteOfMissingNoteReturnFalse`, `jsonStorage_keepsIdsAndTimestamps`, `jsonStorage_writeReplacesContentAndLeavesNoTempFiles`, `jsonStorage_recoversFromBackupIfMainFileIsMissing`.
+- **One-way sync (real `NotesRepositoryImpl` and `JsonNotesStorage`):** `sync_copiesSqliteNotesToJsonWithSameIdsAndReportsCount`, `sync_removesJsonOnlyNotes`, `sync_twiceCreatesNoDuplicates`, `sync_removesNotesDeletedInSqlite`.
+- **Storage separation and SQLite CRUD:** `storages_areIndependent`; `sqliteCrud_throughRepository_withDaoMock` (uses `InMemoryMockNoteDao`, not the Room engine).
+- **Validation (real `NoteValidator`):** `validation_rejectsBlankTitle`, `validation_rejectsBlankContent`, `validation_treatsTabsAndNewlinesAsBlank`, `validation_acceptsNonEmptyValues`.
 ### Emulator Functional Verification
 Functional behavior was driven on an Android Emulator running **Android 14 (API 34)** using `adb` inputs, `uiautomator` dumps, and inspections via `adb run-as`:
 - **Build & Launch:** Clean build and successful startup with crash buffer empty.
@@ -347,6 +353,7 @@ Functional behavior was driven on an Android Emulator running **Android 14 (API 
 - **Storage Isolation:** Confirmed that switching between SQLite and JSON preserves strict visual and data separation without leakage.
 - **Process Termination:** Verified persistence of both storages across app force-stop (`am force-stop`) and relaunch.
 - **Localization:** Verified full UI string adaptation when switching device locale to Russian (`ru-RU`).
+- **Re-check after the final fixes (2026-11-05):** after a save the list shows "Note created successfully" or "Note updated successfully"; sync shows "Synced successfully: N notes exported to JSON"; delete shows "Note deleted successfully"; the crash buffer stayed empty. Details: [TEST_RESULTS.md](docs/evidence/TEST_RESULTS.md#re-check-after-the-final-fixes-2026-11-05).
 
 *Note on Unrun Test:* A physical/emulator check of the atomic file writing fix specifically on Android 7.0/7.1 (API 24/25) was not run because no API 24/25 emulator image was installed. File operations were confirmed functional on API 34.
 
@@ -364,6 +371,12 @@ During the code review process (detailed in [CODE_REVIEW.md](docs/CODE_REVIEW.md
 ### 2. Coroutine Flow Leak & Stale State Elimination (`NotesViewModel.kt`)
 - **Issue:** Switching storages left the SQLite Room `Flow` collector running in the background, causing SQLite updates to overwrite the JSON UI state. In addition, the detail view displayed stale data after editing.
 - **Solution:** Introduced a tracked `notesObservationJob: Job?` cancelled before launching any new flow collection, updated `selectedNote` directly in `saveNote()`, and cleared `selectedNote` when toggling storage modes.
+
+### 3. Final fixes (same day, after the review)
+- **Save confirmation:** one-shot UI events (snackbars) moved from a `MutableSharedFlow` to a buffered `Channel`. Before, the "Note created/updated" snackbar was lost, because the list screen was not collecting events when it reappeared after a save.
+- **Validation:** the title and content check moved into `model/NoteValidator.kt`, a pure function with unit tests. Behaviour is unchanged.
+- **Unit tests:** JSON storage, sync and storage separation are now tested with the real classes (15 tests in total).
+- **Build configuration:** the machine-specific `org.gradle.java.home` path was removed from `gradle.properties`. `lintDebug` no longer fails on it.
 
 ---
 
