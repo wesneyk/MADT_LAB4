@@ -1,0 +1,44 @@
+# Gradle / Kotlin build state
+.gradle/
+.kotlin/
+build/
+**/build/
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Local machine configuration (Android SDK path)
+local.properties
+
+# Android Studio / IntelliJ
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# Build artifacts and archives
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+*.zip
+
+# Signing keys
+*.jks
+*.keystore
+
+# Logs and profiler dumps (curated logs in docs/evidence are kept)
+*.log
+*.hprof
+
+# OS / editor temp files
+.DS_Store
+Thumbs.db
+desktop.ini
+*.tmp
+*.temp
+*.bak
+*.swp
+*~
