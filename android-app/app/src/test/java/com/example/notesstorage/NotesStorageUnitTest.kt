@@ -1,226 +1,210 @@
 package com.example.notesstorage
 
 import com.example.notesstorage.database.InMemoryMockNoteDao
-import com.example.notesstorage.database.NoteDao
 import com.example.notesstorage.model.Note
+import com.example.notesstorage.model.NoteValidator
 import com.example.notesstorage.model.StorageType
 import com.example.notesstorage.repository.NotesRepositoryImpl
 import com.example.notesstorage.storage.JsonNotesStorage
 import kotlinx.coroutines.runBlocking
-import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TemporaryFolder
 import java.io.File
 
-class PureJsonStorageHelper(private val tempDir: File) {
-    private val jsonStorage = JsonNotesStorageMock(tempDir)
-
-    fun getStorage() = jsonStorage
-}
-
-class JsonNotesStorageMock(private val baseDir: File) {
-    private val fileName = "notes.json"
-    private val targetFile: File get() = File(baseDir, fileName)
-
-    fun readNotes(): List<Note> {
-        if (!targetFile.exists()) return emptyList()
-        val text = targetFile.readText(Charsets.UTF_8)
-        if (text.isBlank()) return emptyList()
-        val array = org.json.JSONArray(text)
-        val list = mutableListOf<Note>()
-        for (i in 0 until array.length()) {
-            val obj = array.getJSONObject(i)
-            list.add(
-                Note(
-                    id = obj.getString("id"),
-                    title = obj.getString("title"),
-                    content = obj.getString("content"),
-                    createdAt = obj.getLong("createdAt"),
-                    updatedAt = obj.getLong("updatedAt")
-                )
-            )
-        }
-        return list.sortedByDescending { it.updatedAt }
-    }
-
-    fun writeNotes(notes: List<Note>): Boolean {
-        val array = org.json.JSONArray()
-        for (n in notes) {
-            val obj = org.json.JSONObject().apply {
-                put("id", n.id)
-                put("title", n.title)
-                put("content", n.content)
-                put("createdAt", n.createdAt)
-                put("updatedAt", n.updatedAt)
-            }
-            array.put(obj)
-        }
-        val tmp = File(baseDir, "$fileName.tmp")
-        tmp.writeText(array.toString(2), Charsets.UTF_8)
-        return tmp.renameTo(targetFile) || {
-            tmp.copyTo(targetFile, overwrite = true)
-            tmp.delete()
-        }()
-    }
-
-    fun insertNote(note: Note): Boolean {
-        val current = readNotes().toMutableList()
-        val idx = current.indexOfFirst { it.id == note.id }
-        if (idx >= 0) current[idx] = note else current.add(0, note)
-        return writeNotes(current)
-    }
-
-    fun updateNote(note: Note): Boolean {
-        val current = readNotes().toMutableList()
-        val idx = current.indexOfFirst { it.id == note.id }
-        if (idx >= 0) {
-            current[idx] = note
-            return writeNotes(current)
-        }
-        return false
-    }
-
-    fun deleteNote(id: String): Boolean {
-        val current = readNotes().toMutableList()
-        val removed = current.removeAll { it.id == id }
-        return if (removed) writeNotes(current) else false
-    }
-
-    fun getNoteById(id: String): Note? = readNotes().find { it.id == id }
-}
-
+/**
+ * JSON storage, sync and validation are tested with the real classes
+ * (JsonNotesStorage, NotesRepositoryImpl, NoteValidator) in a temporary folder.
+ *
+ * The SQLite tests use InMemoryMockNoteDao instead of the real Room engine:
+ * Room needs an Android device or Robolectric, so it is not covered by these JVM tests.
+ */
 class NotesStorageUnitTest {
 
-    private lateinit var tempDir: File
-    private lateinit var noteDao: NoteDao
-    private lateinit var jsonStorage: JsonNotesStorageMock
+    @get:Rule
+    val tempFolder = TemporaryFolder()
+
+    private lateinit var noteDao: InMemoryMockNoteDao
+    private lateinit var jsonStorage: JsonNotesStorage
+    private lateinit var repository: NotesRepositoryImpl
 
     @Before
-    fun setup() {
-        tempDir = File(System.getProperty("java.io.tmpdir"), "test_notes_" + System.currentTimeMillis())
-        tempDir.mkdirs()
+    fun setUp() {
         noteDao = InMemoryMockNoteDao()
-        jsonStorage = JsonNotesStorageMock(tempDir)
+        jsonStorage = JsonNotesStorage(tempFolder.root)
+        repository = NotesRepositoryImpl(noteDao, jsonStorage)
     }
 
-    @After
-    fun tearDown() {
-        tempDir.deleteRecursively()
+    private fun note(
+        id: String,
+        title: String = "Title $id",
+        content: String = "Content $id",
+        updated: Long = 2000L
+    ) = Note(id = id, title = title, content = content, createdAt = 1000L, updatedAt = updated)
+
+    private fun jsonFile(name: String = "notes.json") = File(tempFolder.root, name)
+
+    // ---- JSON storage (real JsonNotesStorage) ----
+
+    @Test
+    fun jsonStorage_createReadUpdateDelete() = runBlocking {
+        val original = note("json-1")
+        assertTrue(jsonStorage.insertNote(original))
+        assertEquals("Title json-1", jsonStorage.getNoteById("json-1")?.title)
+
+        val updated = original.copy(title = "Changed", content = "Changed content", updatedAt = 3000L)
+        assertTrue(jsonStorage.updateNote(updated))
+        assertEquals("Changed", jsonStorage.getNoteById("json-1")?.title)
+
+        assertTrue(jsonStorage.deleteNote("json-1"))
+        assertNull(jsonStorage.getNoteById("json-1"))
     }
 
     @Test
-    fun testRoomCrudOperations() = runBlocking {
-        val note = Note(
-            id = "test-1",
-            title = "SQLite Title",
-            content = "SQLite Content",
-            createdAt = 1000L,
-            updatedAt = 2000L
+    fun jsonStorage_updateAndDeleteOfMissingNoteReturnFalse() = runBlocking {
+        assertFalse(jsonStorage.updateNote(note("missing")))
+        assertFalse(jsonStorage.deleteNote("missing"))
+    }
+
+    @Test
+    fun jsonStorage_keepsIdsAndTimestamps() = runBlocking {
+        jsonStorage.writeNotes(
+            listOf(Note(id = "keep", title = "T", content = "C", createdAt = 111L, updatedAt = 222L))
         )
-
-        // Insert
-        val entity = com.example.notesstorage.database.NoteEntity.fromDomain(note)
-        val insertId = noteDao.insertNote(entity)
-        assertTrue(insertId > 0)
-
-        // Read
-        val fetched = noteDao.getNoteById("test-1")?.toDomain()
-        assertNotNull(fetched)
-        assertEquals("SQLite Title", fetched?.title)
-        assertEquals("SQLite Content", fetched?.content)
-
-        // Update
-        val updated = note.copy(title = "Updated Title", content = "Updated Content", updatedAt = 3000L)
-        val updateCount = noteDao.updateNote(com.example.notesstorage.database.NoteEntity.fromDomain(updated))
-        assertTrue(updateCount > 0)
-
-        val fetchedUpdated = noteDao.getNoteById("test-1")?.toDomain()
-        assertEquals("Updated Title", fetchedUpdated?.title)
-
-        // Delete
-        val deleteCount = noteDao.deleteById("test-1")
-        assertTrue(deleteCount > 0)
-
-        val fetchedAfterDelete = noteDao.getNoteById("test-1")
-        assertNull(fetchedAfterDelete)
+        val read = jsonStorage.readNotes().single()
+        assertEquals("keep", read.id)
+        assertEquals(111L, read.createdAt)
+        assertEquals(222L, read.updatedAt)
     }
 
     @Test
-    fun testJsonCrudOperations() {
-        val note = Note(
-            id = "json-1",
-            title = "JSON Title",
-            content = "JSON Content",
-            createdAt = 1000L,
-            updatedAt = 2000L
-        )
+    fun jsonStorage_writeReplacesContentAndLeavesNoTempFiles() = runBlocking {
+        jsonStorage.writeNotes(listOf(note("a"), note("b")))
+        jsonStorage.writeNotes(listOf(note("b")))
 
-        // Create
-        val insertResult = jsonStorage.insertNote(note)
-        assertTrue(insertResult)
-
-        // Read
-        val fetched = jsonStorage.getNoteById("json-1")
-        assertNotNull(fetched)
-        assertEquals("JSON Title", fetched?.title)
-        assertEquals("JSON Content", fetched?.content)
-
-        // Update
-        val updated = note.copy(title = "JSON Updated Title", content = "JSON Updated Content", updatedAt = 4000L)
-        val updateResult = jsonStorage.updateNote(updated)
-        assertTrue(updateResult)
-
-        val fetchedUpdated = jsonStorage.getNoteById("json-1")
-        assertEquals("JSON Updated Title", fetchedUpdated?.title)
-
-        // Delete
-        val deleteResult = jsonStorage.deleteNote("json-1")
-        assertTrue(deleteResult)
-
-        val fetchedAfterDelete = jsonStorage.getNoteById("json-1")
-        assertNull(fetchedAfterDelete)
+        assertEquals(listOf("b"), jsonStorage.readNotes().map { it.id })
+        assertTrue(jsonFile().exists())
+        assertFalse(jsonFile("notes.json.tmp").exists())
+        assertFalse(jsonFile("notes.json.bak").exists())
     }
 
     @Test
-    fun testOneWaySyncSqliteToJson() = runBlocking {
-        // Prepare notes in SQLite
-        val note1 = Note(id = "sync-1", title = "Note 1", content = "Content 1", createdAt = 100L, updatedAt = 100L)
-        val note2 = Note(id = "sync-2", title = "Note 2", content = "Content 2", createdAt = 200L, updatedAt = 200L)
-        noteDao.insertNote(com.example.notesstorage.database.NoteEntity.fromDomain(note1))
-        noteDao.insertNote(com.example.notesstorage.database.NoteEntity.fromDomain(note2))
+    fun jsonStorage_recoversFromBackupIfMainFileIsMissing() = runBlocking {
+        jsonStorage.writeNotes(listOf(note("a")))
+        // Simulate a crash in the middle of an atomic replace: only the backup is left.
+        assertTrue(jsonFile().renameTo(jsonFile("notes.json.bak")))
 
-        // Put an old note into JSON that doesn't exist in SQLite
-        val staleNote = Note(id = "stale-1", title = "Stale", content = "Stale content", createdAt = 50L, updatedAt = 50L)
-        jsonStorage.insertNote(staleNote)
+        assertEquals(listOf("a"), jsonStorage.readNotes().map { it.id })
+    }
 
-        // Perform Sync logic: read SQLite, overwrite JSON safely
-        val sqliteNotes = noteDao.getAllNotes().map { it.toDomain() }
-        val syncOk = jsonStorage.writeNotes(sqliteNotes)
-        assertTrue(syncOk)
+    // ---- One-way sync SQLite -> JSON (real NotesRepositoryImpl) ----
 
-        // Verify JSON now mirrors SQLite exactly
-        val jsonNotes = jsonStorage.readNotes()
-        assertEquals(2, jsonNotes.size)
-        assertTrue(jsonNotes.any { it.id == "sync-1" })
-        assertTrue(jsonNotes.any { it.id == "sync-2" })
-        assertFalse(jsonNotes.any { it.id == "stale-1" }) // Stale note removed
+    @Test
+    fun sync_copiesSqliteNotesToJsonWithSameIdsAndReportsCount() = runBlocking {
+        repository.insertNote(note("s1", updated = 100L), StorageType.SQLITE)
+        repository.insertNote(note("s2", updated = 200L), StorageType.SQLITE)
+
+        val result = repository.syncSqliteToJson()
+
+        assertEquals(2, result.getOrThrow())
+        val json = jsonStorage.readNotes()
+        assertEquals(setOf("s1", "s2"), json.map { it.id }.toSet())
+        assertEquals(200L, json.first { it.id == "s2" }.updatedAt)
     }
 
     @Test
-    fun testValidationLogic() {
-        val emptyTitle = "   "
-        val validTitle = "My Note"
-        val emptyContent = ""
-        val validContent = "Valid content"
+    fun sync_removesJsonOnlyNotes() = runBlocking {
+        jsonStorage.insertNote(note("stale"))
+        repository.insertNote(note("s1"), StorageType.SQLITE)
 
-        assertTrue(emptyTitle.trim().isEmpty())
-        assertFalse(validTitle.trim().isEmpty())
-        assertTrue(emptyContent.trim().isEmpty())
-        assertFalse(validContent.trim().isEmpty())
+        repository.syncSqliteToJson()
+
+        assertEquals(listOf("s1"), jsonStorage.readNotes().map { it.id })
+    }
+
+    @Test
+    fun sync_twiceCreatesNoDuplicates() = runBlocking {
+        repository.insertNote(note("s1"), StorageType.SQLITE)
+
+        repository.syncSqliteToJson()
+        repository.syncSqliteToJson()
+
+        assertEquals(1, jsonStorage.readNotes().size)
+    }
+
+    @Test
+    fun sync_removesNotesDeletedInSqlite() = runBlocking {
+        repository.insertNote(note("keep"), StorageType.SQLITE)
+        repository.insertNote(note("gone"), StorageType.SQLITE)
+        repository.syncSqliteToJson()
+
+        repository.deleteNote("gone", StorageType.SQLITE)
+        repository.syncSqliteToJson()
+
+        assertEquals(listOf("keep"), jsonStorage.readNotes().map { it.id })
+    }
+
+    // ---- Storage separation and SQLite CRUD (DAO mock) ----
+
+    @Test
+    fun storages_areIndependent() = runBlocking {
+        repository.insertNote(note("sql"), StorageType.SQLITE)
+        repository.insertNote(note("json"), StorageType.JSON_FILE)
+
+        assertEquals(listOf("sql"), repository.getNotes(StorageType.SQLITE).map { it.id })
+        assertEquals(listOf("json"), repository.getNotes(StorageType.JSON_FILE).map { it.id })
+    }
+
+    @Test
+    fun sqliteCrud_throughRepository_withDaoMock() = runBlocking {
+        repository.insertNote(note("r1", title = "T1"), StorageType.SQLITE)
+        assertEquals("T1", repository.getNoteById("r1", StorageType.SQLITE)?.title)
+
+        assertTrue(repository.updateNote(note("r1", title = "T2"), StorageType.SQLITE))
+        assertEquals("T2", repository.getNoteById("r1", StorageType.SQLITE)?.title)
+
+        assertTrue(repository.deleteNote("r1", StorageType.SQLITE))
+        assertNull(repository.getNoteById("r1", StorageType.SQLITE))
+    }
+
+    // ---- Validation (real NoteValidator) ----
+
+    @Test
+    fun validation_rejectsBlankTitle() {
+        val result = NoteValidator.validate("   ", "Some content")
+
+        assertTrue(result.isTitleEmpty)
+        assertFalse(result.isContentEmpty)
+        assertFalse(result.isValid)
+    }
+
+    @Test
+    fun validation_rejectsBlankContent() {
+        val result = NoteValidator.validate("Title", "  ")
+
+        assertFalse(result.isTitleEmpty)
+        assertTrue(result.isContentEmpty)
+        assertFalse(result.isValid)
+    }
+
+    @Test
+    fun validation_treatsTabsAndNewlinesAsBlank() {
+        val result = NoteValidator.validate("\t\n", " \n ")
+
+        assertTrue(result.isTitleEmpty)
+        assertTrue(result.isContentEmpty)
+        assertFalse(result.isValid)
+    }
+
+    @Test
+    fun validation_acceptsNonEmptyValues() {
+        val result = NoteValidator.validate("  My note ", "Text")
+
+        assertTrue(result.isValid)
     }
 }

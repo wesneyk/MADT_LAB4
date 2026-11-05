@@ -210,3 +210,74 @@ Recursive tree of `main` on GitHub: 88 files; number of paths matching `local.pr
 | Excluded from repo | `local.properties`, all `build/` folders, `.gradle/`, `.idea/`, `.kotlin/`, `app-debug.apk` |
 
 This report is committed and pushed in a fifth commit ("Add GitHub publication report"); its hash and push output are recorded in the session's final message and in `git log` on GitHub.
+
+## 8. History rewrite on user request
+
+Why: the first five commits ended with the trailer `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`, so GitHub listed "claude" as a co-author. The user asked to remove it ("Да, убери"). Only the commit messages were changed: the trailer line and the blank line before it were removed. Trees, author, author dates, committer and committer dates are unchanged.
+
+Method (working tree and index untouched, because another session was editing files at the same time): each commit was rebuilt with `git commit-tree <same tree> -p <new parent> -F <cleaned message>` with `GIT_AUTHOR_*` / `GIT_COMMITTER_*` set to the original values, then `main` was moved with `git update-ref refs/heads/main 83a4e46… 6778991…`. No stash, reset, rebase or checkout.
+
+| Old | New | Subject |
+|---|---|---|
+| `e4ea0be3bff1f58a58274e4aad70403d97b55769` | `cbf8c593ed80d1d7678e4166ea9875c731732931` | Add .gitignore for the Android project |
+| `be563ae3dfe828de2409ec65ad0643ee0c883b7b` | `6a54f6ad93c1d9178db4cc530b5b3dce5a018be3` | Add Notes Storage Android app |
+| `1cecf69b66332946cd0f144d79713367cd87ece8` | `1a0bbfa6e530ecdd4aa5fa58937f372998a700d9` | Add documentation and lab evidence |
+| `7ff4548cde0f95668dc3cf1624378d845ab47b20` | `ef6ea67e002c9347b28f3a004df44ec4fffb1c8d` | Add README |
+| `6778991c1fb14d02a38f3a87bb1b4d41a44c6d7f` | `83a4e461f4a513c44852c31a300116c66d116022` | Add GitHub publication report |
+
+Checks:
+
+```
+git diff --quiet 6778991 83a4e46        -> exit 0 (no content difference)
+same tree for every old/new pair         -> True x5
+Co-Authored-By lines in new history      -> 0
+git status before vs after               -> identical
+```
+
+New `git log --oneline`:
+
+```
+83a4e46 Add GitHub publication report
+ef6ea67 Add README
+1a0bbfa Add documentation and lab evidence
+6a54f6a Add Notes Storage Android app
+cbf8c59 Add .gitignore for the Android project
+```
+
+Push: the force-push
+
+```
+git push --force-with-lease=main:6778991c1fb14d02a38f3a87bb1b4d41a44c6d7f origin main
+```
+
+was blocked in the AI session by Claude Code's permission guard (classified as a destructive git operation), so the user ran it in the terminal of the Claude desktop app (`PS C:\lab_4>`). Real output:
+
+```
+PS C:\lab_4> git push --force-with-lease=main:6778991c1fb14d02a38f3a87bb1b4d41a44c6d7f origin main
+Enumerating objects: 134, done.
+Counting objects: 100% (134/134), done.
+Delta compression using up to 16 threads
+Compressing objects: 100% (118/118), done.
+Writing objects: 100% (134/134), 8.10 MiB | 3.73 MiB/s, done.
+Total 134 (delta 15), reused 0 (delta 0), pack-reused 0 (from 0)
+remote: Resolving deltas: 100% (15/15), done.
+To https://github.com/wesneyk/MADT_LAB4.git
+ + 6778991...83a4e46 main -> main (forced update)
+```
+
+Verification after the push:
+
+```
+gh api repos/wesneyk/MADT_LAB4/commits/main --jq .sha  -> 83a4e461f4a513c44852c31a300116c66d116022
+git rev-parse HEAD                                      -> 83a4e461f4a513c44852c31a300116c66d116022
+git rev-parse origin/main (after git fetch)             -> 83a4e461f4a513c44852c31a300116c66d116022
+
+gh api "repos/wesneyk/MADT_LAB4/commits?sha=main" (first line of message | contains Co-Authored-By):
+83a4e46 Add GitHub publication report | co-author: false
+ef6ea67 Add README | co-author: false
+1a0bbfa Add documentation and lab evidence | co-author: false
+6a54f6a Add Notes Storage Android app | co-author: false
+cbf8c59 Add .gitignore for the Android project | co-author: false
+```
+
+The hashes in sections 3, 4 and 7 above are the original (pre-rewrite) hashes; the table in this section maps them to the hashes now on GitHub.
